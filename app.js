@@ -6,11 +6,11 @@ async function run(fn){try{await fn()}catch(e){note('Fehler: '+(e.message||e))}}
 async function init(){const params=new URL(location.href).searchParams;const token=params.get('los'),wishlistToken=params.get('wunsch');if(!connect()){show('setup');if(token)note('Die WebApp muss zuerst mit Supabase verbunden werden.');return}if(wishlistToken){show('wishlistOnly');run(async()=>{const {data,error}=await sb.rpc('wichtel_wishlist_get',{p_token:wishlistToken});if(error)throw error;if(!data)throw Error('Wunschlisten-Link ungültig');$('wishlistGreeting').textContent='Hallo '+data.name+'!';$('wishlistBeforeDraw').value=data.wishlist||''});$('saveBeforeDraw').onclick=()=>run(async()=>{const {data,error}=await sb.rpc('wichtel_wishlist_save',{p_token:wishlistToken,p_wishlist:$('wishlistBeforeDraw').value});if(error)throw error;if(!data)throw Error('Wunschlisten-Link ungültig');note('Wunschliste gespeichert. Vielen Dank!')});return}if(token){show('reveal');$('revealBtn').onclick=()=>run(async()=>{const {data,error}=await sb.rpc('wichtel_reveal',{p_token:token});if(error)throw error;show('revealBtn',false);show('revealResult');$('revealResult').textContent=data||'Kein gültiges Los gefunden.';if(data)await showParticipant(token)});return}const {data}=await sb.auth.getSession();session=data.session;renderAuth();sb.auth.onAuthStateChange((_event,s)=>{session=s;renderAuth()})}
 function renderAuth(){show('login',!session);show('admin',!!session);show('logout',!!session);if(session)run(loadRounds)}
 async function loadRounds(){const {data,error}=await sb.from('wichtel_rounds').select('*').order('created_at',{ascending:false});if(error)throw error;rounds=data||[];$('roundSelect').innerHTML='<option value="">Runde auswählen</option>'+rounds.map(r=>`<option value="${r.id}">${esc(r.title)}</option>`).join('');if(!current||!rounds.some(r=>r.id===current))current=rounds[0]?.id||null;if(current){$('roundSelect').value=current;await loadRound()}else{show('manage',false);show('roundDetails',false)}}
-async function loadRound(){if(!current)return;const r=rounds.find(x=>x.id===current);$('budget').value=r?.notes||'';show('manage');show('roundDetails');const [p,e]=await Promise.all([sb.from('wichtel_participants').select('*').eq('round_id',current).order('name'),sb.from('wichtel_exclusions').select('*').eq('round_id',current)]);if(p.error)throw p.error;if(e.error)throw e.error;people=p.data||[];exclusions=e.data||[];renderPeople();renderExclusions();await loadWishlistInvites();await loadStatus()}
+async function loadRound(){if(!current)return;const r=rounds.find(x=>x.id===current);$('budget').value=r?.notes||'';show('manage');show('roundDetails');const [p,e]=await Promise.all([sb.from('wichtel_participants').select('*').eq('round_id',current).order('name'),sb.from('wichtel_exclusions').select('*').eq('round_id',current)]);if(p.error)throw p.error;if(e.error)throw e.error;people=p.data||[];exclusions=e.data||[];renderPeople();renderExclusions();await loadWishlistInvites();await loadStatus();await loadParticipantStatus()}
 function renderPeople(){$('people').innerHTML=people.map(p=>`<div class="item"><div><strong>${esc(p.name)}</strong><small>${esc(p.email)}</small></div><div class="flex"><button class="secondary" data-edit-person="${p.id}">Bearbeiten</button><button class="danger" data-remove-person="${p.id}">Entfernen</button></div></div>`).join('')||'<p class="muted">Noch keine Teilnehmer.</p>';for(const id of ['excludeA','excludeB'])$(id).innerHTML='<option value="">Person wählen</option>'+people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}
 function renderExclusions(){$('exclusions').innerHTML=exclusions.map(e=>{const a=people.find(p=>p.id===e.person_a)?.name||'?',b=people.find(p=>p.id===e.person_b)?.name||'?';return `<div class="item"><span>${esc(a)} ↔ ${esc(b)}</span><button class="danger" data-remove-exclusion="${e.id}">Entfernen</button></div>`}).join('')||'<p class="muted">Keine Ausschlussregeln.</p>'}
 async function loadStatus(){const {data,error}=await sb.rpc('wichtel_round_status',{p_round:current});if(error)throw error;$('drawStatus').textContent=data?.drawn?'Auslosung abgeschlossen. Änderungen sind gesperrt.':'Noch nicht ausgelost. Mindestens zwei Teilnehmer erforderlich.';$('draw').disabled=!!data?.drawn;for(const id of ['addPerson','addExclusion'])$(id).disabled=!!data?.drawn;document.querySelectorAll('[data-remove-person],[data-edit-person],[data-remove-exclusion]').forEach(b=>b.disabled=!!data?.drawn);$('resetDraw').disabled=!data?.drawn;await loadInvites(!!data?.drawn)}
-async function loadInvites(drawn){$('invites').innerHTML='';if(!drawn)return;const {data,error}=await sb.rpc('wichtel_invites_v11',{p_round:current});if(error)throw error;const base=localStorage.getItem('wichtel_public_url')||location.href.split('?')[0];$('publicUrl').value=base;const uniqueInvites=new Map();for(const p of data||[])uniqueInvites.set(p.email.trim().toLowerCase(),p);for(const p of uniqueInvites.values()){const url=new URL(base);url.searchParams.set('los',p.token);const subject='Dein Wichtel-Los';const body=`Hallo ${p.name}!\n\nDein persönliches Wichtel-Los findest du hier:\n${url.href}\n\nBitte teile diesen Link mit niemandem.\n\nViel Spass beim Wichteln!`;const href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);const div=document.createElement('div');div.className='item';const span=document.createElement('span');span.textContent=p.name+' · '+p.email+' · '+(p.sent_at?'Versand markiert':'Noch nicht versendet')+' · '+(p.viewed_at?'Los bestätigt':'Noch nicht bestätigt');const a=document.createElement('a');a.href=href;a.textContent='E-Mail öffnen';a.className='mailbutton';const reminder=document.createElement('a');reminder.href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent('Erinnerung: Dein Wichtel-Los')+'&body='+encodeURIComponent('Hallo '+p.name+'!\n\nHier ist nochmals dein persönlicher Wichtel-Link:\n'+url.href+'\n\nViel Spass beim Wichteln!');reminder.textContent='Erinnerung';reminder.className='mailbutton';const sent=document.createElement('button');sent.className='secondary';sent.textContent=p.sent_at?'Versand zurücknehmen':'Als versendet markieren';sent.onclick=()=>run(async()=>{const {error}=await sb.from('wichtel_participants').update({invitation_sent_at:p.sent_at?null:new Date().toISOString()}).eq('round_id',current).eq('email',p.email);if(error)throw error;await loadStatus()});const actions=document.createElement('div');actions.className='flex';actions.append(a,reminder,sent);div.append(span,actions);$('invites').append(div)}}
+async function loadInvites(drawn){$('invites').innerHTML='';if(!drawn)return;const {data,error}=await sb.rpc('wichtel_invites_v11',{p_round:current});if(error)throw error;const base=localStorage.getItem('wichtel_public_url')||location.href.split('?')[0];$('publicUrl').value=base;const uniqueInvites=new Map();for(const p of data||[])uniqueInvites.set(p.email.trim().toLowerCase(),p);for(const p of uniqueInvites.values()){const url=new URL(base);url.searchParams.set('los',p.token);const subject='Dein Wichtel-Los';const body=`Hallo ${p.name}!\n\nDein persönliches Wichtel-Los findest du hier:\n${url.href}\n\nBitte teile diesen Link mit niemandem.\n\nViel Spass beim Wichteln!`;const href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);const div=document.createElement('div');div.className='item';const span=document.createElement('span');span.textContent=p.name+' · '+p.email+' · '+(p.sent_at?'Versand markiert':'Noch nicht versendet')+' · '+(p.viewed_at?'Los bestätigt':'Noch nicht bestätigt');const a=document.createElement('a');a.href=href;a.textContent='E-Mail öffnen';a.className='mailbutton';const reminder=document.createElement('a');reminder.href='mailto:'+encodeURIComponent(p.email)+'?subject='+encodeURIComponent('Erinnerung: Dein Wichtel-Los')+'&body='+encodeURIComponent('Hallo '+p.name+'!\n\nHier ist nochmals dein persönlicher Wichtel-Link:\n'+url.href+'\n\nViel Spass beim Wichteln!');reminder.textContent='Erinnerung';reminder.className='mailbutton';const sent=document.createElement('button');sent.className='secondary';sent.textContent=p.sent_at?'Versand zurücknehmen':'Als versendet markieren';sent.onclick=()=>run(async()=>{const {error}=await sb.from('wichtel_participants').update({invitation_sent_at:p.sent_at?null:new Date().toISOString()}).eq('round_id',current).eq('email',p.email);if(error)throw error;await loadStatus();await loadParticipantStatus()});const actions=document.createElement('div');actions.className='flex';actions.append(a,reminder,sent);div.append(span,actions);$('invites').append(div)}}
 $('saveConfig').onclick=()=>run(async()=>{const url=val('sburl'),key=val('sbkey');if(!/^https:\/\/.+\.supabase\.co\/?$/.test(url)||!key)throw Error('Gültige Supabase URL und Anon-Key erforderlich');localStorage.setItem('wichtel_url',url.replace(/\/$/,''));localStorage.setItem('wichtel_key',key);location.reload()});
 $('loginBtn').onclick=()=>run(async()=>{const {error}=await sb.auth.signInWithPassword({email:val('email'),password:val('password')});if(error)throw error;note('Angemeldet.')});
 $('logout').onclick=()=>run(async()=>{await sb.auth.signOut();note('Abgemeldet.')});
@@ -67,3 +67,50 @@ async function loadWishlistInvites(){
 }
 
 document.addEventListener('click',event=>{if(event.target.closest('#refreshWishlistInvites')){event.preventDefault();const el=$('wishlistInvites');el.textContent='Anfrage gestartet …';run(loadWishlistInvites)}});
+
+async function loadParticipantStatus(){
+ const el=$('participantStatus');if(!current){el.textContent='Bitte zuerst eine Runde wählen.';return;}
+ el.textContent='Status wird geladen …';
+ const roundId=current;
+ const {data:roundStatus,error:roundError}=await sb.rpc('wichtel_round_status',{p_round:roundId});
+ if(roundError){el.textContent='Fehler beim Laden: '+roundError.message;throw roundError;}
+ const drawn=!!roundStatus?.drawn;
+ let confirmations=new Map();
+ if(drawn){
+  const {data,error}=await sb.rpc('wichtel_invites_v11',{p_round:roundId});
+  if(error){el.textContent='Fehler beim Laden: '+error.message;throw error;}
+  confirmations=new Map((data||[]).map(p=>[p.email.trim().toLowerCase(),!!p.viewed_at]));
+ }
+ if(current!==roundId)return;
+ const total=people.length,wishes=people.filter(p=>!!p.wishlist?.trim()).length;
+ const sent=people.filter(p=>!!p.invitation_sent_at).length;
+ const confirmed=drawn?people.filter(p=>confirmations.get(p.email.trim().toLowerCase())).length:0;
+ const summary=document.createElement('div');summary.className='status-summary';
+ for(const [label,count] of [['Wunschlisten',wishes],['Einladungen markiert',sent],['Lose bestätigt',confirmed]]){
+  const box=document.createElement('div');box.className='status-count';
+  const value=document.createElement('strong');value.textContent=drawn||label!=='Lose bestätigt'?count+' / '+total:'–';
+  const caption=document.createElement('span');caption.textContent=label;
+  box.append(value,caption);summary.append(box);
+ }
+ const list=document.createElement('div');list.className='status-list';
+ for(const p of people){
+  const row=document.createElement('div');row.className='status-person';
+  const title=document.createElement('strong');title.textContent=p.name;
+  const details=document.createElement('div');details.className='status-tags';
+  for(const [label,ok,waiting] of [
+   ['Wunschliste',!!p.wishlist?.trim(),false],
+   ['Einladung',!!p.invitation_sent_at,!drawn],
+   ['Los',confirmations.get(p.email.trim().toLowerCase())||false,!drawn]
+  ]){
+   const tag=document.createElement('span');tag.className='status-tag '+(waiting?'status-pending':ok?'status-yes':'status-no');
+   tag.textContent=label+': '+(waiting?'noch nicht ausgelost':ok?'✓':'offen');
+   details.append(tag);
+  }
+  row.append(title,details);list.append(row);
+ }
+ el.replaceChildren(summary,list);
+ if(!total){const msg=document.createElement('p');msg.className='muted';msg.textContent='Noch keine Teilnehmer erfasst.';el.append(msg);}
+}
+document.addEventListener('click',event=>{
+ if(event.target.closest('#refreshParticipantStatus')){event.preventDefault();run(async()=>{if(!current)return;const {data,error}=await sb.from('wichtel_participants').select('*').eq('round_id',current).order('name');if(error)throw error;people=data||[];await loadParticipantStatus()});}
+});
