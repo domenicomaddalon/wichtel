@@ -53,6 +53,7 @@ $('resetDraw').onclick=()=>run(async()=>{
 });
 
 async function loadWishlistInvites(){
+ if(!current){$('wishlistInvites').textContent='Bitte zuerst eine Wichtelrunde auswählen.';return;}
  const el=$('wishlistInvites');el.textContent='Wunschlisten-Einladungen werden geladen …';
  const {data,error}=await sb.rpc('wichtel_wishlist_invites',{p_round:current});if(error){el.textContent='Wunschlisten konnten nicht geladen werden: '+error.message;throw error;}el.replaceChildren();
  if(!data?.length){el.textContent='Noch keine Teilnehmer in dieser Runde.';return;}
@@ -65,4 +66,4 @@ async function loadWishlistInvites(){
  }
 }
 
-$('refreshWishlistInvites').onclick=()=>run(loadWishlistInvites);
+document.addEventListener('click',event=>{if(event.target.closest('#refreshWishlistInvites')){event.preventDefault();const el=$('wishlistInvites');el.textContent='Anfrage gestartet …';run(loadWishlistInvites)}});
