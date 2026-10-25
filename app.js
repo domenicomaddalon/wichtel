@@ -1,7 +1,7 @@
 import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
 const $=id=>document.getElementById(id),show=(id,on=true)=>$(id).classList.toggle('hidden',!on);let sb,rounds=[],people=[],exclusions=[],current=null,session=null;
 const note=msg=>$('notice').textContent=msg,val=id=>$(id).value.trim(),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function connect(){const url=localStorage.getItem('wichtel_url'),key=localStorage.getItem('wichtel_key');if(!url||!key)return false;sb=createClient(url,key);return true}
+function connect(){const url=localStorage.getItem('wichtel_url')||'https://gahdfunbdlaiyydpyyyh.supabase.co',key=localStorage.getItem('wichtel_key')||'sb_publishable_yip1M5AcWpulJz9aDQrBBg_txM2Frq4';if(!url||!key)return false;sb=createClient(url,key);return true}
 async function run(fn){try{await fn()}catch(e){note('Fehler: '+(e.message||e))}}
 async function init(){const token=new URL(location.href).searchParams.get('los');if(!connect()){show('setup');if(token)note('Die WebApp muss zuerst mit Supabase verbunden werden.');return}if(token){show('reveal');$('revealBtn').onclick=()=>run(async()=>{const {data,error}=await sb.rpc('wichtel_reveal',{p_token:token});if(error)throw error;show('revealBtn',false);show('revealResult');$('revealResult').textContent=data||'Kein gültiges Los gefunden.'});return}const {data}=await sb.auth.getSession();session=data.session;renderAuth();sb.auth.onAuthStateChange((_event,s)=>{session=s;renderAuth()})}
 function renderAuth(){show('login',!session);show('admin',!!session);show('logout',!!session);if(session)run(loadRounds)}
