@@ -26,7 +26,7 @@ $('saveUrl').onclick=()=>run(async()=>{const u=new URL(val('publicUrl'));if(u.pr
 init().catch(e=>note('Fehler: '+e.message));
 async function showParticipant(token){
  const {data,error}=await sb.rpc('wichtel_token_info',{p_token:token});if(error)throw error;if(!data)return;
- show('participantArea');$('targetWishlist').textContent=data.wishlist||'Noch keine Wünsche hinterlegt.';
+ show('participantArea');$('targetWishlist').textContent=data.wishlist||'Noch keine Wünsche hinterlegt.';$('myWishlist').value=data.my_wishlist||'';
  $('roundNotes').textContent=data.notes||'';$('receiptStatus').textContent=data.viewed?'Erhalt bereits bestätigt.':'Noch nicht bestätigt.';
  $('confirmReceipt').disabled=!!data.viewed;
  $('confirmReceipt').onclick=()=>run(async()=>{const r=await sb.rpc('wichtel_confirm_receipt',{p_token:token});if(r.error)throw r.error;if(!r.data)throw Error('Los nicht mehr gültig');$('receiptStatus').textContent='Erhalt bestätigt – vielen Dank!';$('confirmReceipt').disabled=true});
@@ -43,7 +43,7 @@ $('people').addEventListener('click',e=>{const id=e.target.dataset.editPerson;if
 $('deleteRound').onclick=()=>run(async()=>{
  const r=rounds.find(x=>x.id===current);if(!r)return;
  if(prompt('Zum endgültigen Löschen bitte den Rundennamen exakt eingeben:\n'+r.title)!==r.title)return;
- const {error}=await sb.from('wichtel_rounds').delete().eq('id',current);if(error)throw error;
+ const {error}=await sb.rpc('wichtel_delete_round',{p_round:current,p_title:r.title});if(error)throw error;
  current=null;await loadRounds();note('Runde endgültig gelöscht.');
 });
 $('resetDraw').onclick=()=>run(async()=>{
